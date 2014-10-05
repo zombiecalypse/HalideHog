@@ -60,7 +60,8 @@ Func Cell(Func bins, Param<uint32_t> cellX, Param<uint32_t> cellY) {
 
 Func Proj(Func f, Param<uint8_t> nBins) {
   Func proj;
-  proj(x, y, c) = f(x, y, c, 0)/100;
+  RDom t(0, nBins+1);
+  proj(x, y, c) = sum(f(x, y, c, t))/(100*nBins+100);
   return proj;
 }
 
@@ -89,19 +90,25 @@ int main(int argc, char** argv) {
 
   Func gradx = GradientX(input);
   Func grady = GradientY(input);
-  Func binned = Proj(Cell(Bin(gradx, grady, lut), cellX, cellY), nBins);
+  Func binned = Bin(gradx, grady, lut);
+  Func cell = Cell(binned, cellX, cellY);
+  Func proj = Proj(cell, nBins);
   clock_t c1 = clock();
-  binned.bound(c, 0, 3).unroll(c);
-  binned.bound(x, 0, (img.width() - 2)/cellSize);
-  binned.bound(y, 0, (img.height() - 2)/cellSize);
-  binned.compile_jit();
+
   binned.compute_root();
+  binned.unroll(c);
+  binned.vectorize(y, cellSize);
+  proj.bound(c, 0, 3).unroll(c);
+  proj.bound(x, 0, (img.width() - 2)/cellSize);
+  proj.bound(y, 0, (img.height() - 2)/cellSize);
+  proj.compile_jit();
+  proj.compute_root();
   clock_t c2 = clock();
   cout << "compile: " << (c2 - c1) << endl;
   Image<float> output;
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < 200; i++) {
     clock_t c3 = clock();
-    output = binned.realize((img.width() - 2)/cellSize, (img.height() - 2)/cellSize, img.channels());
+    output = proj.realize((img.width() - 2)/cellSize, (img.height() - 2)/cellSize, img.channels());
     clock_t c4 = clock();
     cout << "run      " << (c4 - c3) << endl;
   }
